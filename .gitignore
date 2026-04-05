@@ -1,0 +1,7 @@
+api_keys/
+checkpoints/
+data/
+venv/
+__pycache__/
+*.pyc
+.DS_Store

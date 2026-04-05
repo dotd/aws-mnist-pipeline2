@@ -7,8 +7,8 @@ import torch
 from PIL import Image
 from torchvision import transforms
 
-from model import UNet
-from dataset import NUM_CLASSES, decode_segmentation
+from .model import UNet
+from .dataset import NUM_CLASSES, decode_segmentation
 
 
 def predict(image_path, checkpoint_path, image_size=256):

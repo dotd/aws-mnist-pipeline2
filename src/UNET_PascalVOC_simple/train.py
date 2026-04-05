@@ -8,8 +8,8 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
 
-from model import UNet
-from dataset import PascalVOCSegmentation, NUM_CLASSES
+from .model import UNet
+from .dataset import PascalVOCSegmentation, NUM_CLASSES
 
 logging.basicConfig(
     level=logging.INFO,

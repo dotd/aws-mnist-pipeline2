@@ -6,4 +6,4 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY . .
 
-CMD ["python", "src/mnist/train_mnist.py"]
+CMD ["python", "run.py", "mnist"]

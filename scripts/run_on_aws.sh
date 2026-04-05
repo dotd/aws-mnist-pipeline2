@@ -13,6 +13,7 @@
 #   ./scripts/run_on_aws.sh unet                     # Train U-Net
 #   ./scripts/run_on_aws.sh mnist --epochs 5         # Pass extra args
 #   ./scripts/run_on_aws.sh unet --epochs 25 --wandb # U-Net with wandb
+#   ./scripts/run_on_aws.sh unet --epochs 25 --wandb --wandb-project my-project # U-Net with wandb custom project
 
 set -euo pipefail
 

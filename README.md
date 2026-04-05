@@ -1,21 +1,21 @@
-# AWS MNIST Pipeline training 
+# AWS General Pipeline training 
 
 
-# Claude Solution for Training Pipeline
+## Claude Solution for Training Pipeline
 
-## The question
+### The question
 I would like to learn the best practices to train models on AWS. I have computer vision models where I build the models on my M5 Mac, and when I think the model is ready, I would like asap to open an instance and train it on AWS. What would you recommend for this training? Should I use dockers?
 
-## The answer
+### The answer
 Great use case! Here's a practical guide tailored to your workflow (Mac M5 → AWS GPU training).
 
-### Core Recommendation: Yes, Use Docker
+#### Core Recommendation: Yes, Use Docker
 
 Docker is the right call here. It solves the biggest pain point in your workflow — your M5 Mac uses ARM/Apple Silicon, while AWS GPU instances are x86 Linux. Without Docker, you'll hit dependency and environment mismatches constantly.
 
 ---
 
-### Recommended Stack
+#### Recommended Stack
 
 **Instance type:** `p3.2xlarge` (1x V100, good starting point) or `g4dn.xlarge` (cheaper, T4 GPU, great for CV). For serious training, `p3.8xlarge` or `p4d.24xlarge`.
 
@@ -25,13 +25,13 @@ Docker is the right call here. It solves the biggest pain point in your workflow
 
 ---
 
-### The Workflow
+#### The Workflow
 
 ```
 M5 Mac (build & test)  →  Push to ECR  →  Launch EC2 GPU  →  Pull & Train  →  Save to S3
 ```
 
-#### 1. Build your Docker image on Mac (multi-platform)
+##### 1. Build your Docker image on Mac (multi-platform)
 
 ```dockerfile
 # Dockerfile
@@ -50,7 +50,7 @@ Build for linux/amd64 (AWS target) from your Mac:
 docker buildx build --platform linux/amd64 -t my-cv-model:latest .
 ```
 
-#### 2. Push to Amazon ECR (Elastic Container Registry)
+##### 2. Push to Amazon ECR (Elastic Container Registry)
 
 ```bash
 # Authenticate
@@ -65,7 +65,7 @@ docker tag dotan-fr-my-cv-model:latest 148761683501.dkr.ecr.us-east-1.amazonaws.
 docker push 148761683501.dkr.ecr.us-east-1.amazonaws.com/my-cv-model:latest
 ```
 
-#### 3. Launch EC2 fast (keep a launch template)
+##### 3. Launch EC2 fast (keep a launch template)
 
 Save a **Launch Template** in the AWS console with your preferred instance type, AMI, security group, and IAM role. Then spin up instantly:
 
@@ -75,7 +75,7 @@ aws ec2 run-instances --launch-template LaunchTemplateName=my-gpu-template
 
 Or use a simple shell script that launches, waits, and SSHs in automatically.
 
-#### 4. Train on EC2
+##### 4. Train on EC2
 
 ```bash
 # On the EC2 instance
@@ -85,7 +85,7 @@ docker run --gpus all \
   <ecr_url>/my-cv-model:latest
 ```
 
-#### 5. Save outputs to S3
+##### 5. Save outputs to S3
 
 Always sync checkpoints to S3 during and after training — never rely on EBS alone:
 
@@ -97,7 +97,7 @@ Or do it inside your training script at each epoch checkpoint.
 
 ---
 
-### Key Best Practices
+#### Key Best Practices
 
 **Cost control** is critical with GPU instances:
 - Use **Spot Instances** — up to 90% cheaper. For CV training, interruptions are manageable if you checkpoint regularly (every epoch).
@@ -116,13 +116,13 @@ signal.signal(signal.SIGTERM, save_checkpoint_and_exit)
 
 ---
 
-### Faster Iteration: SageMaker (optional upgrade)
+#### Faster Iteration: SageMaker (optional upgrade)
 
 Once your workflow matures, consider **SageMaker Training Jobs** — you just point it at your ECR image and S3 data, and it handles instance launch, training, shutdown, and logging automatically. No SSH needed. But start with raw EC2 first to understand the fundamentals.
 
 ---
 
-### Summary Checklist
+#### Summary Checklist
 
 - [ ] Docker with `--platform linux/amd64` builds
 - [ ] ECR for image storage

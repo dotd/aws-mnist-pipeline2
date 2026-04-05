@@ -6,6 +6,7 @@ import time
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import wandb
 from torch.utils.data import DataLoader
 
 from .model import UNet
@@ -111,6 +112,9 @@ def main():
     parser.add_argument("--image-size", type=int, default=256)
     parser.add_argument("--data-dir", type=str, default="./data")
     parser.add_argument("--save-dir", type=str, default="./checkpoints/unet_voc")
+    parser.add_argument("--wandb", action="store_true", help="Enable Weights & Biases logging")
+    parser.add_argument("--wandb-project", type=str, default="unet-voc-segmentation")
+    parser.add_argument("--wandb-run-name", type=str, default=None)
     args = parser.parse_args()
 
     logger.info("=" * 60)
@@ -149,6 +153,15 @@ def main():
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode="max", patience=3, factor=0.5)
 
+    # --- Weights & Biases ---
+    if args.wandb:
+        wandb.init(
+            project=args.wandb_project,
+            name=args.wandb_run_name,
+            config=vars(args),
+        )
+        wandb.watch(model, log="all", log_freq=100)
+
     # --- Training loop ---
     os.makedirs(args.save_dir, exist_ok=True)
     logger.info("Starting training for %d epochs...", args.epochs)
@@ -176,6 +189,18 @@ def main():
             train_loss, train_acc * 100, val_loss, val_acc * 100, val_miou, elapsed,
         )
 
+        if args.wandb:
+            wandb.log({
+                "epoch": epoch,
+                "train/loss": train_loss,
+                "train/accuracy": train_acc * 100,
+                "val/loss": val_loss,
+                "val/accuracy": val_acc * 100,
+                "val/mIoU": val_miou,
+                "lr": optimizer.param_groups[0]["lr"],
+                "epoch_time": elapsed,
+            })
+
         if val_miou > best_miou:
             best_miou = val_miou
             path = os.path.join(args.save_dir, "best_model.pt")
@@ -187,6 +212,9 @@ def main():
     torch.save(model.state_dict(), final_path)
     logger.info("Final model saved to %s", final_path)
     logger.info("Training complete. Best val mIoU: %.4f", best_miou)
+
+    if args.wandb:
+        wandb.finish()
 
 
 if __name__ == "__main__":

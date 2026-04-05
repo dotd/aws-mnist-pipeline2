@@ -6,6 +6,7 @@ import time
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import wandb
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
@@ -107,6 +108,9 @@ def main():
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--data-dir", type=str, default="./data")
     parser.add_argument("--save-dir", type=str, default="./checkpoints")
+    parser.add_argument("--wandb", action="store_true", help="Enable Weights & Biases logging")
+    parser.add_argument("--wandb-project", type=str, default="mnist-training")
+    parser.add_argument("--wandb-run-name", type=str, default=None)
     args = parser.parse_args()
 
     logger.info("=" * 60)
@@ -143,6 +147,15 @@ def main():
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=args.lr)
 
+    # --- Weights & Biases ---
+    if args.wandb:
+        wandb.init(
+            project=args.wandb_project,
+            name=args.wandb_run_name,
+            config=vars(args),
+        )
+        wandb.watch(model, log="all", log_freq=100)
+
     # --- Training loop ---
     os.makedirs(args.save_dir, exist_ok=True)
     logger.info("Starting training for %d epochs...", args.epochs)
@@ -163,6 +176,17 @@ def main():
             train_loss, train_acc, test_loss, test_acc, elapsed,
         )
 
+        if args.wandb:
+            wandb.log({
+                "epoch": epoch,
+                "train/loss": train_loss,
+                "train/accuracy": train_acc,
+                "test/loss": test_loss,
+                "test/accuracy": test_acc,
+                "lr": optimizer.param_groups[0]["lr"],
+                "epoch_time": elapsed,
+            })
+
         if test_acc > best_test_acc:
             best_test_acc = test_acc
             path = os.path.join(args.save_dir, "best_model.pt")
@@ -174,6 +198,9 @@ def main():
     torch.save(model.state_dict(), final_path)
     logger.info("Final model saved to %s", final_path)
     logger.info("Training complete. Best test accuracy: %.2f%%", best_test_acc)
+
+    if args.wandb:
+        wandb.finish()
 
 
 if __name__ == "__main__":

@@ -28,8 +28,11 @@ INSTANCE_TYPE="g4dn.xlarge"
 KEY_NAME="training-key"
 KEY_FILE="$HOME/.ssh/${KEY_NAME}.pem"
 SECURITY_GROUP_NAME="training-sg"
+IAM_ROLE_NAME="ec2-training-role"
+IAM_INSTANCE_PROFILE_NAME="ec2-training-profile"
 S3_BUCKET=""  # Set to your bucket name, e.g. "my-training-results". Leave empty to skip S3 sync.
-VOLUME_SIZE_GB=50
+: "${WANDB_API_KEY:=}"  # Reads from env var WANDB_API_KEY. Or paste your key between the quotes.
+VOLUME_SIZE_GB=100
 
 # Deep Learning AMI (Ubuntu) — update if needed for your region
 # This finds the latest Deep Learning AMI automatically
@@ -55,6 +58,17 @@ else
     exit 1
 fi
 
+# Check wandb key if --wandb is requested
+WANDB_ENV_FLAG=""
+if echo "${EXTRA_ARGS}" | grep -q -- "--wandb"; then
+    if [[ -z "$WANDB_API_KEY" ]]; then
+        echo "Error: --wandb requested but WANDB_API_KEY is not set."
+        echo "Set it via: export WANDB_API_KEY=your_key"
+        exit 1
+    fi
+    WANDB_ENV_FLAG="-e WANDB_API_KEY=${WANDB_API_KEY}"
+fi
+
 RUN_NAME="${PIPELINE}-$(date +%Y%m%d-%H%M%S)"
 
 echo "============================================================"
@@ -65,10 +79,10 @@ echo "  Run name:  ${RUN_NAME}"
 echo "============================================================"
 
 # =============================================================================
-# Step 1: Build and push Docker image to ECR
+# Step 1: Build base image (only if needed) and push to ECR
 # =============================================================================
 echo ""
-echo "[Step 1/7] Building and pushing Docker image..."
+echo "[Step 1/9] Checking if base image rebuild is needed..."
 
 # Authenticate with ECR
 aws ecr get-login-password --region "${AWS_REGION}" | \
@@ -78,28 +92,46 @@ aws ecr get-login-password --region "${AWS_REGION}" | \
 aws ecr describe-repositories --repository-names "${ECR_REPO_NAME}" --region "${AWS_REGION}" 2>/dev/null || \
   aws ecr create-repository --repository-name "${ECR_REPO_NAME}" --region "${AWS_REGION}"
 
-# Build for linux/amd64
-docker buildx build --platform linux/amd64 -t "${ECR_REPO_NAME}:${IMAGE_TAG}" .
+# Only rebuild if requirements.txt or Dockerfile changed, or image doesn't exist
+NEEDS_BUILD=false
+if ! docker image inspect "${ECR_REPO_NAME}:${IMAGE_TAG}" >/dev/null 2>&1; then
+    echo "Image not found locally — building."
+    NEEDS_BUILD=true
+elif [[ "Dockerfile" -nt "$(docker image inspect "${ECR_REPO_NAME}:${IMAGE_TAG}" --format '{{.Created}}')" ]] || \
+     [[ "requirements.txt" -nt "$(docker image inspect "${ECR_REPO_NAME}:${IMAGE_TAG}" --format '{{.Created}}')" ]]; then
+    echo "Dockerfile or requirements.txt changed — rebuilding."
+    NEEDS_BUILD=true
+else
+    echo "Base image is up to date — skipping rebuild."
+fi
 
-# Tag and push
-docker tag "${ECR_REPO_NAME}:${IMAGE_TAG}" "${IMAGE_URI}"
-docker push "${IMAGE_URI}"
-
-echo "Image pushed: ${IMAGE_URI}"
+if [[ "$NEEDS_BUILD" == "true" ]]; then
+    docker buildx build --platform linux/amd64 -t "${ECR_REPO_NAME}:${IMAGE_TAG}" .
+    docker tag "${ECR_REPO_NAME}:${IMAGE_TAG}" "${IMAGE_URI}"
+    docker push "${IMAGE_URI}"
+    echo "Image pushed: ${IMAGE_URI}"
+fi
 
 # =============================================================================
 # Step 2: Find the latest Deep Learning AMI
 # =============================================================================
 echo ""
-echo "[Step 2/7] Finding latest Deep Learning AMI..."
+echo "[Step 2/9] Finding latest Deep Learning AMI..."
 
 if [[ -z "$AMI_ID" ]]; then
     AMI_ID=$(aws ec2 describe-images \
         --region "${AWS_REGION}" \
         --owners amazon \
-        --filters "Name=name,Values=Deep Learning AMI (Ubuntu 20.04)*" "Name=state,Values=available" \
+        --filters "Name=name,Values=Deep Learning Base OSS Nvidia Driver GPU AMI (Ubuntu 22.04)*" \
+                  "Name=state,Values=available" \
+                  "Name=architecture,Values=x86_64" \
         --query "Images | sort_by(@, &CreationDate) | [-1].ImageId" \
         --output text)
+fi
+
+if [[ -z "$AMI_ID" ]] || [[ "$AMI_ID" == "None" ]]; then
+    echo "Error: Could not find a Deep Learning AMI. Set AMI_ID manually in the script."
+    exit 1
 fi
 
 echo "Using AMI: ${AMI_ID}"
@@ -108,7 +140,7 @@ echo "Using AMI: ${AMI_ID}"
 # Step 3: Create key pair (if needed)
 # =============================================================================
 echo ""
-echo "[Step 3/7] Setting up key pair..."
+echo "[Step 3/9] Setting up key pair..."
 
 if ! aws ec2 describe-key-pairs --key-names "${KEY_NAME}" --region "${AWS_REGION}" 2>/dev/null; then
     echo "Creating key pair: ${KEY_NAME}"
@@ -127,7 +159,7 @@ fi
 # Step 4: Create security group (if needed)
 # =============================================================================
 echo ""
-echo "[Step 4/7] Setting up security group..."
+echo "[Step 4/9] Setting up security group..."
 
 SG_ID=$(aws ec2 describe-security-groups \
     --filters "Name=group-name,Values=${SECURITY_GROUP_NAME}" \
@@ -157,16 +189,62 @@ else
 fi
 
 # =============================================================================
-# Step 5: Launch EC2 instance
+# Step 5: Create IAM role + instance profile for ECR access (if needed)
 # =============================================================================
 echo ""
-echo "[Step 5/7] Launching EC2 instance (${INSTANCE_TYPE})..."
+echo "[Step 5/9] Setting up IAM instance profile..."
+
+if ! aws iam get-role --role-name "${IAM_ROLE_NAME}" 2>/dev/null; then
+    echo "Creating IAM role: ${IAM_ROLE_NAME}"
+    aws iam create-role \
+        --role-name "${IAM_ROLE_NAME}" \
+        --assume-role-policy-document '{
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Principal": {"Service": "ec2.amazonaws.com"},
+                "Action": "sts:AssumeRole"
+            }]
+        }'
+
+    aws iam attach-role-policy \
+        --role-name "${IAM_ROLE_NAME}" \
+        --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly
+
+    aws iam attach-role-policy \
+        --role-name "${IAM_ROLE_NAME}" \
+        --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
+else
+    echo "IAM role '${IAM_ROLE_NAME}' already exists."
+fi
+
+if ! aws iam get-instance-profile --instance-profile-name "${IAM_INSTANCE_PROFILE_NAME}" 2>/dev/null; then
+    echo "Creating instance profile: ${IAM_INSTANCE_PROFILE_NAME}"
+    aws iam create-instance-profile \
+        --instance-profile-name "${IAM_INSTANCE_PROFILE_NAME}"
+
+    aws iam add-role-to-instance-profile \
+        --instance-profile-name "${IAM_INSTANCE_PROFILE_NAME}" \
+        --role-name "${IAM_ROLE_NAME}"
+
+    echo "Waiting for instance profile to propagate..."
+    sleep 10
+else
+    echo "Instance profile '${IAM_INSTANCE_PROFILE_NAME}' already exists."
+fi
+
+# =============================================================================
+# Step 6: Launch EC2 instance
+# =============================================================================
+echo ""
+echo "[Step 6/9] Launching EC2 instance (${INSTANCE_TYPE})..."
 
 INSTANCE_ID=$(aws ec2 run-instances \
     --image-id "${AMI_ID}" \
     --instance-type "${INSTANCE_TYPE}" \
     --key-name "${KEY_NAME}" \
     --security-group-ids "${SG_ID}" \
+    --iam-instance-profile "Name=${IAM_INSTANCE_PROFILE_NAME}" \
     --block-device-mappings "[{\"DeviceName\":\"/dev/sda1\",\"Ebs\":{\"VolumeSize\":${VOLUME_SIZE_GB},\"VolumeType\":\"gp3\"}}]" \
     --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=${RUN_NAME}}]" \
     --region "${AWS_REGION}" \
@@ -196,25 +274,48 @@ for i in $(seq 1 30); do
 done
 
 # =============================================================================
-# Step 6: Run training on the instance
+# Step 6: Sync code to EC2
 # =============================================================================
 echo ""
-echo "[Step 6/7] Running training on EC2..."
+echo "[Step 7/9] Syncing code to EC2..."
 
-ssh -o StrictHostKeyChecking=no -i "${KEY_FILE}" ubuntu@"${PUBLIC_IP}" << REMOTE_SCRIPT
+REMOTE_CODE_DIR="/home/ubuntu/code"
+SSH_OPTS="-o StrictHostKeyChecking=no -i ${KEY_FILE}"
+
+rsync -avz --exclude '.git' \
+    --exclude 'data' \
+    --exclude 'checkpoints' \
+    --exclude 'venv' \
+    --exclude '__pycache__' \
+    --exclude 'wandb' \
+    --exclude '.DS_Store' \
+    -e "ssh ${SSH_OPTS}" \
+    ./ ubuntu@"${PUBLIC_IP}":"${REMOTE_CODE_DIR}/"
+
+echo "Code synced to ${REMOTE_CODE_DIR}"
+
+# =============================================================================
+# Step 7: Run training on the instance
+# =============================================================================
+echo ""
+echo "[Step 8/9] Running training on EC2..."
+
+ssh ${SSH_OPTS} ubuntu@"${PUBLIC_IP}" << REMOTE_SCRIPT
 set -euo pipefail
 
 echo "--- Authenticating with ECR ---"
 aws ecr get-login-password --region ${AWS_REGION} | \
   docker login --username AWS --password-stdin ${ECR_URI}
 
-echo "--- Pulling image ---"
+echo "--- Pulling base image ---"
 docker pull ${IMAGE_URI}
 
 echo "--- Starting training: ${DOCKER_CMD} ---"
 mkdir -p /home/ubuntu/data /home/ubuntu/checkpoints
 
 docker run --rm --gpus all \
+  ${WANDB_ENV_FLAG} \
+  -v ${REMOTE_CODE_DIR}:/workspace \
   -v /home/ubuntu/data:/workspace/data \
   -v /home/ubuntu/checkpoints:/workspace/checkpoints \
   ${IMAGE_URI} \
@@ -227,7 +328,7 @@ REMOTE_SCRIPT
 # Step 7: Sync results to S3 and terminate
 # =============================================================================
 echo ""
-echo "[Step 7/7] Collecting results and cleaning up..."
+echo "[Step 9/9] Collecting results and cleaning up..."
 
 if [[ -n "$S3_BUCKET" ]]; then
     echo "Syncing checkpoints to s3://${S3_BUCKET}/${RUN_NAME}/..."

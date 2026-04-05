@@ -20,8 +20,14 @@ You can safely run and test your container locally to verify everything works be
 
 ## Running the Docker Locally
 
+Mount your code directory so code changes take effect without rebuilding:
+
 ```bash
-docker run --rm -v $(pwd)/data:/workspace/data -v $(pwd)/checkpoints:/workspace/checkpoints my-cv-model:latest
+docker run --rm \
+  -v $(pwd):/workspace \
+  -v $(pwd)/data:/workspace/data \
+  -v $(pwd)/checkpoints:/workspace/checkpoints \
+  my-cv-model:latest
 ```
 
 ### Flags explained
@@ -37,16 +43,28 @@ You can override the default training arguments by appending them after the imag
 
 ```bash
 # Train MNIST with custom args
-docker run --rm -v $(pwd)/data:/workspace/data -v $(pwd)/checkpoints:/workspace/checkpoints my-cv-model:latest python run.py mnist --epochs 5 --batch-size 128 --lr 0.0005
+docker run --rm \
+  -v $(pwd):/workspace \
+  -v $(pwd)/data:/workspace/data \
+  -v $(pwd)/checkpoints:/workspace/checkpoints \
+  my-cv-model:latest python run.py mnist --epochs 5 --batch-size 128 --lr 0.0005
 
 # Train U-Net segmentation
-docker run --rm -v $(pwd)/data:/workspace/data -v $(pwd)/checkpoints:/workspace/checkpoints my-cv-model:latest python run.py unet --epochs 25 --batch-size 8 --image-size 256
+docker run --rm \
+  -v $(pwd):/workspace \
+  -v $(pwd)/data:/workspace/data \
+  -v $(pwd)/checkpoints:/workspace/checkpoints \
+  my-cv-model:latest python run.py unet --epochs 25 --batch-size 8 --image-size 256
 ```
 
 ### Running with GPU (if available)
 
 ```bash
-docker run --rm --gpus all -v $(pwd)/data:/workspace/data -v $(pwd)/checkpoints:/workspace/checkpoints my-cv-model:latest
+docker run --rm --gpus all \
+  -v $(pwd):/workspace \
+  -v $(pwd)/data:/workspace/data \
+  -v $(pwd)/checkpoints:/workspace/checkpoints \
+  my-cv-model:latest
 ```
 
 - `--gpus all`: Gives the container access to all available NVIDIA GPUs. Requires the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) installed on the host.

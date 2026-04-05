@@ -81,10 +81,18 @@ docker pull 148761683501.dkr.ecr.us-east-1.amazonaws.com/dotan-fr-my-cv-model:la
 ## Step 6: Run the Training
 
 ```bash
+# Train MNIST (default)
 docker run --rm --gpus all \
   -v /home/ubuntu/data:/workspace/data \
   -v /home/ubuntu/checkpoints:/workspace/checkpoints \
   148761683501.dkr.ecr.us-east-1.amazonaws.com/dotan-fr-my-cv-model:latest
+
+# Train U-Net segmentation
+docker run --rm --gpus all \
+  -v /home/ubuntu/data:/workspace/data \
+  -v /home/ubuntu/checkpoints:/workspace/checkpoints \
+  148761683501.dkr.ecr.us-east-1.amazonaws.com/dotan-fr-my-cv-model:latest \
+  python run.py unet --epochs 25 --batch-size 8 --image-size 256
 ```
 
 ## Step 7: Copy Results to S3

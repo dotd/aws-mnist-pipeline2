@@ -2,7 +2,7 @@
 
 ## Building the Docker
 For building the docker I run:
-```
+```bash
 docker buildx build --platform linux/amd64 -t my-cv-model:latest .
 ```
 
@@ -36,7 +36,11 @@ docker run --rm -v $(pwd)/data:/workspace/data -v $(pwd)/checkpoints:/workspace/
 You can override the default training arguments by appending them after the image name:
 
 ```bash
-docker run --rm -v $(pwd)/data:/workspace/data -v $(pwd)/checkpoints:/workspace/checkpoints my-cv-model:latest python src/train.py --epochs 5 --batch-size 128 --lr 0.0005
+# Train MNIST with custom args
+docker run --rm -v $(pwd)/data:/workspace/data -v $(pwd)/checkpoints:/workspace/checkpoints my-cv-model:latest python run.py mnist --epochs 5 --batch-size 128 --lr 0.0005
+
+# Train U-Net segmentation
+docker run --rm -v $(pwd)/data:/workspace/data -v $(pwd)/checkpoints:/workspace/checkpoints my-cv-model:latest python run.py unet --epochs 25 --batch-size 8 --image-size 256
 ```
 
 ### Running with GPU (if available)

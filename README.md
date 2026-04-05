@@ -69,7 +69,7 @@ COPY requirements.txt .
 RUN pip install -r requirements.txt
 COPY . .
 
-CMD ["python", "train.py"]
+CMD ["python", "run.py", "mnist"]
 ```
 
 Build for linux/amd64 (AWS target) from your Mac:
@@ -105,11 +105,17 @@ Or use a simple shell script that launches, waits, and SSHs in automatically.
 ##### 4. Train on EC2
 
 ```bash
-# On the EC2 instance
+# On the EC2 instance — train MNIST (default)
 docker run --gpus all \
-  -v /data:/workspace/data \       # mount EBS dataset
-  -v /checkpoints:/workspace/ckpts \
+  -v /data:/workspace/data \
+  -v /checkpoints:/workspace/checkpoints \
   <ecr_url>/my-cv-model:latest
+
+# Or train U-Net segmentation
+docker run --gpus all \
+  -v /data:/workspace/data \
+  -v /checkpoints:/workspace/checkpoints \
+  <ecr_url>/my-cv-model:latest python run.py unet --epochs 25 --batch-size 8
 ```
 
 ##### 5. Save outputs to S3

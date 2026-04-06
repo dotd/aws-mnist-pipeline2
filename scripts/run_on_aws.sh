@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 #
 # Automates the full AWS training workflow:
-#   1. Build & push Docker image to ECR
-#   2. Create security group + key pair (if needed)
-#   3. Launch EC2 GPU instance
-#   4. Wait for instance, SSH in, pull image, run training
-#   5. Sync results to S3
-#   6. Terminate instance
+#   1. Build base image (only if needed) and push to ECR
+#   2. Find the latest Deep Learning AMI
+#   3. Create key pair (if needed)
+#   4. Create security group (if needed)
+#   5. Create IAM role + instance profile for ECR access (if needed)
+#   6. Launch EC2 instance
+#   7. Sync code to EC2
+#   8. Run training on the instance
+#   9. Sync results to S3 and terminate
 #
 # Usage:
 #   ./scripts/run_on_aws.sh                          # Train MNIST (default)
@@ -79,7 +82,7 @@ echo "  Run name:  ${RUN_NAME}"
 echo "============================================================"
 
 # =============================================================================
-# Step 1: Build base image (only if needed) and push to ECR
+# Step 1/9: Build base image (only if needed) and push to ECR
 # =============================================================================
 echo ""
 echo "[Step 1/9] Checking if base image rebuild is needed..."
@@ -113,7 +116,7 @@ if [[ "$NEEDS_BUILD" == "true" ]]; then
 fi
 
 # =============================================================================
-# Step 2: Find the latest Deep Learning AMI
+# Step 2/9: Find the latest Deep Learning AMI
 # =============================================================================
 echo ""
 echo "[Step 2/9] Finding latest Deep Learning AMI..."
@@ -137,7 +140,7 @@ fi
 echo "Using AMI: ${AMI_ID}"
 
 # =============================================================================
-# Step 3: Create key pair (if needed)
+# Step 3/9: Create key pair (if needed)
 # =============================================================================
 echo ""
 echo "[Step 3/9] Setting up key pair..."
@@ -156,7 +159,7 @@ else
 fi
 
 # =============================================================================
-# Step 4: Create security group (if needed)
+# Step 4/9: Create security group (if needed)
 # =============================================================================
 echo ""
 echo "[Step 4/9] Setting up security group..."
@@ -167,6 +170,8 @@ SG_ID=$(aws ec2 describe-security-groups \
     --query "SecurityGroups[0].GroupId" \
     --output text 2>/dev/null)
 
+MY_IP=$(curl -s https://checkip.amazonaws.com)
+
 if [[ "$SG_ID" == "None" ]] || [[ -z "$SG_ID" ]]; then
     echo "Creating security group: ${SECURITY_GROUP_NAME}"
     SG_ID=$(aws ec2 create-security-group \
@@ -175,21 +180,35 @@ if [[ "$SG_ID" == "None" ]] || [[ -z "$SG_ID" ]]; then
         --region "${AWS_REGION}" \
         --query "GroupId" \
         --output text)
-
-    MY_IP=$(curl -s https://checkip.amazonaws.com)
-    aws ec2 authorize-security-group-ingress \
-        --group-id "${SG_ID}" \
-        --protocol tcp \
-        --port 22 \
-        --cidr "${MY_IP}/32" \
-        --region "${AWS_REGION}"
-    echo "Allowed SSH from ${MY_IP}"
 else
     echo "Security group '${SECURITY_GROUP_NAME}' already exists (${SG_ID})."
+    # Revoke all existing SSH rules so we can set the current IP
+    EXISTING_CIDRS=$(aws ec2 describe-security-groups \
+        --group-ids "${SG_ID}" \
+        --region "${AWS_REGION}" \
+        --query "SecurityGroups[0].IpPermissions[?FromPort==\`22\`].IpRanges[].CidrIp" \
+        --output text)
+    for cidr in ${EXISTING_CIDRS}; do
+        aws ec2 revoke-security-group-ingress \
+            --group-id "${SG_ID}" \
+            --protocol tcp \
+            --port 22 \
+            --cidr "${cidr}" \
+            --region "${AWS_REGION}" 2>/dev/null || true
+    done
 fi
 
+# Always ensure current IP is allowed
+aws ec2 authorize-security-group-ingress \
+    --group-id "${SG_ID}" \
+    --protocol tcp \
+    --port 22 \
+    --cidr "${MY_IP}/32" \
+    --region "${AWS_REGION}" 2>/dev/null || true
+echo "SSH allowed from ${MY_IP}"
+
 # =============================================================================
-# Step 5: Create IAM role + instance profile for ECR access (if needed)
+# Step 5/9: Create IAM role + instance profile for ECR access (if needed)
 # =============================================================================
 echo ""
 echo "[Step 5/9] Setting up IAM instance profile..."
@@ -234,7 +253,7 @@ else
 fi
 
 # =============================================================================
-# Step 6: Launch EC2 instance
+# Step 6/9: Launch EC2 instance
 # =============================================================================
 echo ""
 echo "[Step 6/9] Launching EC2 instance (${INSTANCE_TYPE})..."
@@ -274,7 +293,7 @@ for i in $(seq 1 30); do
 done
 
 # =============================================================================
-# Step 6: Sync code to EC2
+# Step 7/9: Sync code to EC2
 # =============================================================================
 echo ""
 echo "[Step 7/9] Syncing code to EC2..."
@@ -295,7 +314,7 @@ rsync -avz --exclude '.git' \
 echo "Code synced to ${REMOTE_CODE_DIR}"
 
 # =============================================================================
-# Step 7: Run training on the instance
+# Step 8/9: Run training on the instance
 # =============================================================================
 echo ""
 echo "[Step 8/9] Running training on EC2..."
@@ -325,7 +344,7 @@ echo "--- Training complete ---"
 REMOTE_SCRIPT
 
 # =============================================================================
-# Step 7: Sync results to S3 and terminate
+# Step 9/9: Sync results to S3 and terminate
 # =============================================================================
 echo ""
 echo "[Step 9/9] Collecting results and cleaning up..."

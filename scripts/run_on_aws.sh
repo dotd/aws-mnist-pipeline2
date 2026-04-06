@@ -4,12 +4,13 @@
 #   1. Build base image (only if needed) and push to ECR
 #   2. Find the latest Deep Learning AMI
 #   3. Create key pair (if needed)
-#   4. Create security group (if needed)
+#   4. Create security group (update SSH IP)
 #   5. Create IAM role + instance profile for ECR access (if needed)
 #   6. Launch EC2 instance
 #   7. Sync code to EC2
-#   8. Run training on the instance
-#   9. Sync results to S3 and terminate
+#   8. Launch training (detached) — safe to close laptop
+#
+# After training, use check_training.sh to monitor, sync results, and terminate.
 #
 # Usage:
 #   ./scripts/run_on_aws.sh                          # Train MNIST (default)
@@ -82,10 +83,10 @@ echo "  Run name:  ${RUN_NAME}"
 echo "============================================================"
 
 # =============================================================================
-# Step 1/9: Build base image (only if needed) and push to ECR
+# Step 1/8: Build base image (only if needed) and push to ECR
 # =============================================================================
 echo ""
-echo "[Step 1/9] Checking if base image rebuild is needed..."
+echo "[Step 1/8] Checking if base image rebuild is needed..."
 
 # Authenticate with ECR
 aws ecr get-login-password --region "${AWS_REGION}" | \
@@ -116,10 +117,10 @@ if [[ "$NEEDS_BUILD" == "true" ]]; then
 fi
 
 # =============================================================================
-# Step 2/9: Find the latest Deep Learning AMI
+# Step 2/8: Find the latest Deep Learning AMI
 # =============================================================================
 echo ""
-echo "[Step 2/9] Finding latest Deep Learning AMI..."
+echo "[Step 2/8] Finding latest Deep Learning AMI..."
 
 if [[ -z "$AMI_ID" ]]; then
     AMI_ID=$(aws ec2 describe-images \
@@ -140,10 +141,10 @@ fi
 echo "Using AMI: ${AMI_ID}"
 
 # =============================================================================
-# Step 3/9: Create key pair (if needed)
+# Step 3/8: Create key pair (if needed)
 # =============================================================================
 echo ""
-echo "[Step 3/9] Setting up key pair..."
+echo "[Step 3/8] Setting up key pair..."
 
 if ! aws ec2 describe-key-pairs --key-names "${KEY_NAME}" --region "${AWS_REGION}" 2>/dev/null; then
     echo "Creating key pair: ${KEY_NAME}"
@@ -159,10 +160,10 @@ else
 fi
 
 # =============================================================================
-# Step 4/9: Create security group (if needed)
+# Step 4/8: Create security group (if needed)
 # =============================================================================
 echo ""
-echo "[Step 4/9] Setting up security group..."
+echo "[Step 4/8] Setting up security group..."
 
 SG_ID=$(aws ec2 describe-security-groups \
     --filters "Name=group-name,Values=${SECURITY_GROUP_NAME}" \
@@ -208,10 +209,10 @@ aws ec2 authorize-security-group-ingress \
 echo "SSH allowed from ${MY_IP}"
 
 # =============================================================================
-# Step 5/9: Create IAM role + instance profile for ECR access (if needed)
+# Step 5/8: Create IAM role + instance profile for ECR access (if needed)
 # =============================================================================
 echo ""
-echo "[Step 5/9] Setting up IAM instance profile..."
+echo "[Step 5/8] Setting up IAM instance profile..."
 
 if ! aws iam get-role --role-name "${IAM_ROLE_NAME}" 2>/dev/null; then
     echo "Creating IAM role: ${IAM_ROLE_NAME}"
@@ -253,10 +254,10 @@ else
 fi
 
 # =============================================================================
-# Step 6/9: Launch EC2 instance
+# Step 6/8: Launch EC2 instance
 # =============================================================================
 echo ""
-echo "[Step 6/9] Launching EC2 instance (${INSTANCE_TYPE})..."
+echo "[Step 6/8] Launching EC2 instance (${INSTANCE_TYPE})..."
 
 INSTANCE_ID=$(aws ec2 run-instances \
     --image-id "${AMI_ID}" \
@@ -293,10 +294,10 @@ for i in $(seq 1 30); do
 done
 
 # =============================================================================
-# Step 7/9: Sync code to EC2
+# Step 7/8: Sync code to EC2
 # =============================================================================
 echo ""
-echo "[Step 7/9] Syncing code to EC2..."
+echo "[Step 7/8] Syncing code to EC2..."
 
 REMOTE_CODE_DIR="/home/ubuntu/code"
 SSH_OPTS="-o StrictHostKeyChecking=no -i ${KEY_FILE}"
@@ -314,10 +315,10 @@ rsync -avz --exclude '.git' \
 echo "Code synced to ${REMOTE_CODE_DIR}"
 
 # =============================================================================
-# Step 8/9: Run training on the instance
+# Step 8/8: Launch training (detached) on the instance
 # =============================================================================
 echo ""
-echo "[Step 8/9] Running training on EC2..."
+echo "[Step 8/8] Launching training on EC2 (detached)..."
 
 ssh ${SSH_OPTS} ubuntu@"${PUBLIC_IP}" << REMOTE_SCRIPT
 set -euo pipefail
@@ -329,47 +330,46 @@ aws ecr get-login-password --region ${AWS_REGION} | \
 echo "--- Pulling base image ---"
 docker pull ${IMAGE_URI}
 
-echo "--- Starting training: ${DOCKER_CMD} ---"
+echo "--- Starting training (detached): ${DOCKER_CMD} ---"
 mkdir -p /home/ubuntu/data /home/ubuntu/checkpoints
 
-docker run --rm --gpus all \
+nohup docker run --rm --gpus all \
+  --name training-${PIPELINE} \
   ${WANDB_ENV_FLAG} \
   -v ${REMOTE_CODE_DIR}:/workspace \
   -v /home/ubuntu/data:/workspace/data \
   -v /home/ubuntu/checkpoints:/workspace/checkpoints \
   ${IMAGE_URI} \
-  ${DOCKER_CMD}
+  ${DOCKER_CMD} \
+  > /home/ubuntu/training.log 2>&1 &
 
-echo "--- Training complete ---"
+echo "--- Training launched in background (PID: \$!) ---"
 REMOTE_SCRIPT
 
-# =============================================================================
-# Step 9/9: Sync results to S3 and terminate
-# =============================================================================
-echo ""
-echo "[Step 9/9] Collecting results and cleaning up..."
-
-if [[ -n "$S3_BUCKET" ]]; then
-    echo "Syncing checkpoints to s3://${S3_BUCKET}/${RUN_NAME}/..."
-    ssh -o StrictHostKeyChecking=no -i "${KEY_FILE}" ubuntu@"${PUBLIC_IP}" \
-        "aws s3 sync /home/ubuntu/checkpoints s3://${S3_BUCKET}/${RUN_NAME}/"
-    echo "Results saved to s3://${S3_BUCKET}/${RUN_NAME}/"
-else
-    echo "No S3_BUCKET configured — skipping sync."
-    echo "You can SSH in to retrieve results: ssh -i ${KEY_FILE} ubuntu@${PUBLIC_IP}"
-fi
-
-echo ""
-read -rp "Terminate instance ${INSTANCE_ID}? [y/N] " confirm
-if [[ "$confirm" =~ ^[Yy]$ ]]; then
-    aws ec2 terminate-instances --instance-ids "${INSTANCE_ID}" --region "${AWS_REGION}"
-    echo "Instance ${INSTANCE_ID} terminated."
-else
-    echo "Instance left running. Don't forget to terminate it!"
-    echo "  aws ec2 terminate-instances --instance-ids ${INSTANCE_ID} --region ${AWS_REGION}"
-fi
+# Save run info for check_training.sh
+RUN_INFO_DIR="$HOME/.aws-training-runs"
+mkdir -p "${RUN_INFO_DIR}"
+RUN_INFO_FILE="${RUN_INFO_DIR}/${RUN_NAME}.env"
+cat > "${RUN_INFO_FILE}" << EOF
+INSTANCE_ID=${INSTANCE_ID}
+PUBLIC_IP=${PUBLIC_IP}
+KEY_FILE=${KEY_FILE}
+RUN_NAME=${RUN_NAME}
+PIPELINE=${PIPELINE}
+AWS_REGION=${AWS_REGION}
+S3_BUCKET=${S3_BUCKET}
+EOF
 
 echo ""
 echo "============================================================"
-echo "  Done! Run: ${RUN_NAME}"
+echo "  Training launched! Safe to close your laptop."
+echo ""
+echo "  Run name:    ${RUN_NAME}"
+echo "  Instance:    ${INSTANCE_ID} (${PUBLIC_IP})"
+echo "  Log file:    /home/ubuntu/training.log"
+echo ""
+echo "  Check status:  ./scripts/check_training.sh ${RUN_NAME}"
+echo "  Tail logs:     ./scripts/check_training.sh ${RUN_NAME} logs"
+echo "  Sync & stop:   ./scripts/check_training.sh ${RUN_NAME} finish"
+echo "  SSH in:        ssh -i ${KEY_FILE} ubuntu@${PUBLIC_IP}"
 echo "============================================================"

@@ -39,7 +39,7 @@ class MNISTConvNet(nn.Module):
         return x
 
 
-def train_one_epoch(model, loader, optimizer, criterion, device, epoch):
+def train_one_epoch(model, loader, optimizer, criterion, device, epoch, logger):
     model.train()
     running_loss = 0.0
     correct = 0
@@ -159,7 +159,7 @@ def main():
         logger.info("Epoch %d/%d", epoch, args.epochs)
 
         start = time.time()
-        train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, criterion, device, epoch)
+        train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, criterion, device, epoch, logger)
         elapsed = time.time() - start
 
         test_loss, test_acc = evaluate(model, test_loader, criterion, device)

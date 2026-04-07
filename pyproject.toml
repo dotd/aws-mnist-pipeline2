@@ -1,0 +1,6 @@
+[project]
+name = "aws-mnist-pipeline"
+version = "0.1.0"
+
+[tool.setuptools.packages.find]
+include = ["src*"]

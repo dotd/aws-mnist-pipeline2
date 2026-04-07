@@ -9,6 +9,7 @@ ecr:
 ec2:
   instance_type: "g4dn.xlarge"
   key_name: "training-key"
+  key_file: "~/.ssh/training-key.pem"
   security_group_name: "training-sg"
   volume_size_gb: 100
 

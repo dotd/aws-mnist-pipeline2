@@ -1,4 +1,3 @@
-import logging
 import argparse
 import os
 import time
@@ -11,13 +10,8 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
 from src.utils.aws_utils import sync_to_s3, terminate_self
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler()],
-)
-logger = logging.getLogger(__name__)
+from src.utils.device_utils import get_device
+from src.utils.logging_utils import get_logger
 
 
 class MNISTConvNet(nn.Module):
@@ -43,14 +37,6 @@ class MNISTConvNet(nn.Module):
         x = self.features(x)
         x = self.classifier(x)
         return x
-
-
-def get_device():
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
 
 
 def train_one_epoch(model, loader, optimizer, criterion, device, epoch):
@@ -117,6 +103,8 @@ def main():
     parser.add_argument("--s3-prefix", type=str, default="", help="S3 key prefix (e.g. mnist-run-001)")
     parser.add_argument("--self-terminate", action="store_true", help="Terminate EC2 instance when training finishes")
     args = parser.parse_args()
+
+    logger = get_logger(__name__)
 
     logger.info("=" * 60)
     logger.info("MNIST CNN Training")

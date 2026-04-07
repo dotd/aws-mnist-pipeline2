@@ -1,4 +1,3 @@
-import logging
 import argparse
 import os
 import time
@@ -12,21 +11,8 @@ from torch.utils.data import DataLoader
 from src.UNET_PascalVOC_simple.model import UNet
 from src.UNET_PascalVOC_simple.dataset import PascalVOCSegmentation, NUM_CLASSES
 from src.utils.aws_utils import sync_to_s3, terminate_self
-
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[logging.StreamHandler()],
-)
-logger = logging.getLogger(__name__)
-
-
-def get_device():
-    if torch.cuda.is_available():
-        return torch.device("cuda")
-    if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-        return torch.device("mps")
-    return torch.device("cpu")
+from src.utils.device_utils import get_device
+from src.utils.logging_utils import get_logger
 
 
 def pixel_accuracy(preds, targets):
@@ -120,6 +106,8 @@ def main():
     parser.add_argument("--s3-prefix", type=str, default="", help="S3 key prefix (e.g. unet-run-001)")
     parser.add_argument("--self-terminate", action="store_true", help="Terminate EC2 instance when training finishes")
     args = parser.parse_args()
+
+    logger = get_logger(__name__)
 
     logger.info("=" * 60)
     logger.info("U-Net Pascal VOC Semantic Segmentation Training")

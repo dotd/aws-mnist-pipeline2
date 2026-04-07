@@ -9,9 +9,9 @@ import torch.optim as optim
 import wandb
 from torch.utils.data import DataLoader
 
-from .model import UNet
-from .dataset import PascalVOCSegmentation, NUM_CLASSES
-from ..aws_utils import sync_to_s3, terminate_self
+from src.UNET_PascalVOC_simple.model import UNet
+from src.UNET_PascalVOC_simple.dataset import PascalVOCSegmentation, NUM_CLASSES
+from src.utils.aws_utils import sync_to_s3, terminate_self
 
 logging.basicConfig(
     level=logging.INFO,

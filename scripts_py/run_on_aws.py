@@ -21,7 +21,6 @@ Usage:
 """
 
 import json
-import logging
 import os
 import stat
 import subprocess
@@ -33,22 +32,10 @@ import boto3
 import requests
 import yaml
 
-# =============================================================================
-# Logging setup — writes to stdout and to ./logs/log_YYYYMMDD_HHMMSS.log
-# =============================================================================
-LOG_DIR = Path("./logs")
-LOG_DIR.mkdir(exist_ok=True)
-LOG_FILE = LOG_DIR / f"log_{time.strftime('%Y%m%d_%H%M%S')}.log"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+from src.utils.logging_utils import get_logger
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(LOG_FILE),
-    ],
-)
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # =============================================================================
 # Configuration — loaded from configs/aws.yaml
@@ -503,7 +490,7 @@ def main():
     logger.info("  Sync & stop:   python scripts_py/check_training.py %s finish", run_name)
     logger.info("  SSH in:        ssh -i %s ubuntu@%s", KEY_FILE, public_ip)
     logger.info("=" * 60)
-    logger.info("Log saved to: %s", LOG_FILE)
+    logger.info("Log saved to: %s", logger.log_file)
 
 
 if __name__ == "__main__":

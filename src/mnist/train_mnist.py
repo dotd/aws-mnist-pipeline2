@@ -10,7 +10,7 @@ import wandb
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 
-from ..aws_utils import sync_to_s3, terminate_self
+from src.utils.aws_utils import sync_to_s3, terminate_self
 
 logging.basicConfig(
     level=logging.INFO,

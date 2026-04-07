@@ -34,7 +34,7 @@ KEY_FILE="$HOME/.ssh/${KEY_NAME}.pem"
 SECURITY_GROUP_NAME="training-sg"
 IAM_ROLE_NAME="ec2-training-role"
 IAM_INSTANCE_PROFILE_NAME="ec2-training-profile"
-S3_BUCKET=""  # Set to your bucket name, e.g. "my-training-results". Leave empty to skip S3 sync.
+S3_BUCKET="fsr-autonomous-training"  # Set to your bucket name, e.g. "my-training-results". Leave empty to skip S3 sync.
 : "${WANDB_API_KEY:=}"  # Reads from env var WANDB_API_KEY. Or paste your key between the quotes.
 VOLUME_SIZE_GB=100
 
@@ -53,10 +53,18 @@ PIPELINE="${1:-mnist}"
 shift 2>/dev/null || true
 EXTRA_ARGS="$*"
 
+# Build AWS flags for S3 sync and self-termination
+AWS_TRAIN_FLAGS=""
+if [[ -n "$S3_BUCKET" ]]; then
+    S3_PREFIX="${PIPELINE}-$(date +%Y%m%d-%H%M%S)"
+    AWS_TRAIN_FLAGS="--s3-bucket ${S3_BUCKET} --s3-prefix ${S3_PREFIX}"
+fi
+AWS_TRAIN_FLAGS="${AWS_TRAIN_FLAGS} --self-terminate"
+
 if [[ "$PIPELINE" == "mnist" ]]; then
-    DOCKER_CMD="python run.py mnist ${EXTRA_ARGS}"
+    DOCKER_CMD="python run.py mnist ${EXTRA_ARGS} ${AWS_TRAIN_FLAGS}"
 elif [[ "$PIPELINE" == "unet" ]]; then
-    DOCKER_CMD="python run.py unet ${EXTRA_ARGS}"
+    DOCKER_CMD="python run.py unet ${EXTRA_ARGS} ${AWS_TRAIN_FLAGS}"
 else
     echo "Error: unknown pipeline '${PIPELINE}'. Use 'mnist' or 'unet'."
     exit 1
@@ -234,6 +242,19 @@ if ! aws iam get-role --role-name "${IAM_ROLE_NAME}" 2>/dev/null; then
     aws iam attach-role-policy \
         --role-name "${IAM_ROLE_NAME}" \
         --policy-arn arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+    # Allow the instance to terminate itself
+    aws iam put-role-policy \
+        --role-name "${IAM_ROLE_NAME}" \
+        --policy-name "self-terminate" \
+        --policy-document '{
+            "Version": "2012-10-17",
+            "Statement": [{
+                "Effect": "Allow",
+                "Action": "ec2:TerminateInstances",
+                "Resource": "*"
+            }]
+        }'
 else
     echo "IAM role '${IAM_ROLE_NAME}' already exists."
 fi

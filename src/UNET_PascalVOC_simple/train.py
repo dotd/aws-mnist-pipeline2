@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 
 from .model import UNet
 from .dataset import PascalVOCSegmentation, NUM_CLASSES
+from ..aws_utils import sync_to_s3, terminate_self
 
 logging.basicConfig(
     level=logging.INFO,
@@ -115,6 +116,9 @@ def main():
     parser.add_argument("--wandb", action="store_true", help="Enable Weights & Biases logging")
     parser.add_argument("--wandb-project", type=str, default="unet-voc-segmentation")
     parser.add_argument("--wandb-run-name", type=str, default=None)
+    parser.add_argument("--s3-bucket", type=str, default="", help="S3 bucket to sync checkpoints to")
+    parser.add_argument("--s3-prefix", type=str, default="", help="S3 key prefix (e.g. unet-run-001)")
+    parser.add_argument("--self-terminate", action="store_true", help="Terminate EC2 instance when training finishes")
     args = parser.parse_args()
 
     logger.info("=" * 60)
@@ -215,6 +219,17 @@ def main():
 
     if args.wandb:
         wandb.finish()
+
+    # --- Sync checkpoints to S3 ---
+    if args.s3_bucket:
+        prefix = args.s3_prefix or f"unet-{time.strftime('%Y%m%d-%H%M%S')}"
+        logger.info("Syncing checkpoints to s3://%s/%s/...", args.s3_bucket, prefix)
+        sync_to_s3(args.save_dir, args.s3_bucket, prefix)
+
+    # --- Self-terminate EC2 instance ---
+    if args.self_terminate:
+        logger.info("Self-terminating EC2 instance...")
+        terminate_self()
 
 
 if __name__ == "__main__":

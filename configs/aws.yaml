@@ -1,0 +1,20 @@
+aws:
+  account_id: "148761683501"
+  region: "us-east-1"
+
+ecr:
+  repo_name: "dotan-fr-my-cv-model"
+  image_tag: "latest"
+
+ec2:
+  instance_type: "g4dn.xlarge"
+  key_name: "training-key"
+  security_group_name: "training-sg"
+  volume_size_gb: 100
+
+iam:
+  role_name: "ec2-training-role"
+  instance_profile_name: "ec2-training-profile"
+
+s3:
+  bucket: "fsr-autonomous-training"

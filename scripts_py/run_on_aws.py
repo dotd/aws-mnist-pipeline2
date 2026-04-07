@@ -31,6 +31,7 @@ from pathlib import Path
 
 import boto3
 import requests
+import yaml
 
 # =============================================================================
 # Logging setup — writes to stdout and to ./logs/log_YYYYMMDD_HHMMSS.log
@@ -50,21 +51,25 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# Configuration — edit these to match your setup
+# Configuration — loaded from configs/aws.yaml
 # =============================================================================
-AWS_ACCOUNT_ID = "148761683501"
-AWS_REGION = "us-east-1"
-ECR_REPO_NAME = "dotan-fr-my-cv-model"
-IMAGE_TAG = "latest"
-INSTANCE_TYPE = "g4dn.xlarge"
-KEY_NAME = "training-key"
+CONFIG_PATH = Path(__file__).resolve().parent.parent / "configs" / "aws.yaml"
+with open(CONFIG_PATH) as f:
+    _cfg = yaml.safe_load(f)
+
+AWS_ACCOUNT_ID = _cfg["aws"]["account_id"]
+AWS_REGION = _cfg["aws"]["region"]
+ECR_REPO_NAME = _cfg["ecr"]["repo_name"]
+IMAGE_TAG = _cfg["ecr"]["image_tag"]
+INSTANCE_TYPE = _cfg["ec2"]["instance_type"]
+KEY_NAME = _cfg["ec2"]["key_name"]
 KEY_FILE = str(Path.home() / ".ssh" / f"{KEY_NAME}.pem")
-SECURITY_GROUP_NAME = "training-sg"
-IAM_ROLE_NAME = "ec2-training-role"
-IAM_INSTANCE_PROFILE_NAME = "ec2-training-profile"
-S3_BUCKET = "fsr-autonomous-training"
+SECURITY_GROUP_NAME = _cfg["ec2"]["security_group_name"]
+VOLUME_SIZE_GB = _cfg["ec2"]["volume_size_gb"]
+IAM_ROLE_NAME = _cfg["iam"]["role_name"]
+IAM_INSTANCE_PROFILE_NAME = _cfg["iam"]["instance_profile_name"]
+S3_BUCKET = _cfg["s3"]["bucket"]
 WANDB_API_KEY = os.environ.get("WANDB_API_KEY", "")
-VOLUME_SIZE_GB = 100
 
 # Derived values
 ECR_URI = f"{AWS_ACCOUNT_ID}.dkr.ecr.{AWS_REGION}.amazonaws.com"

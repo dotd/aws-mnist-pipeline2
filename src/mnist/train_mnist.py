@@ -92,7 +92,7 @@ def evaluate(model, loader, criterion, device):
     return avg_loss, accuracy
 
 
-def main():
+def parse_args():
     parser = argparse.ArgumentParser(description="MNIST CNN Training")
     parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=64)
@@ -100,7 +100,7 @@ def main():
     parser.add_argument("--data-dir", type=str, default="./data/mnist")
     parser.add_argument("--checkpoints-dir", type=str, default="./checkpoints")
     parser.add_argument(
-        "--wandb", action="store_true", help="Enable Weights & Biases logging"
+        "--wandb", action="store_true", default=True, help="Enable Weights & Biases logging"
     )
     parser.add_argument("--wandb-project", type=str, default="mnist-training")
     parser.add_argument("--wandb-run-name", type=str, default=None)
@@ -115,8 +115,11 @@ def main():
         action="store_true",
         help="Terminate EC2 instance when training finishes",
     )
-    args = parser.parse_args()
+    return parser.parse_args()
 
+
+def main():
+    args = parse_args()
     logger = get_logger(__name__)
 
     logger.info("=" * 60)
@@ -171,6 +174,7 @@ def main():
             name=args.wandb_run_name,
             config=vars(args),
         )
+        logger.info("W&B run: %s", wandb.run.get_url())
         wandb.watch(model, log="all", log_freq=100)
 
     # --- Training loop ---

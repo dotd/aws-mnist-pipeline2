@@ -12,4 +12,4 @@
 # -e: exit on error, -u: error on undefined vars, -o pipefail: catch errors in pipes
 set -euo pipefail
 
-python scripts_py/run_on_aws.py --module src.mnist.train_mnist "$@"
+python scripts_py/run_on_aws.py --module src.mnist.train_mnist "$@" 

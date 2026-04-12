@@ -61,7 +61,10 @@ def train_one_epoch(model, loader, optimizer, criterion, device, epoch, logger):
         if (batch_idx + 1) % 100 == 0:
             logger.info(
                 "Epoch %d | Batch %d/%d | Loss: %.4f",
-                epoch, batch_idx + 1, len(loader), loss.item(),
+                epoch,
+                batch_idx + 1,
+                len(loader),
+                loss.item(),
             )
 
     avg_loss = running_loss / total
@@ -91,17 +94,27 @@ def evaluate(model, loader, criterion, device):
 
 def main():
     parser = argparse.ArgumentParser(description="MNIST CNN Training")
-    parser.add_argument("--epochs", type=int, default=10)
+    parser.add_argument("--epochs", type=int, default=3)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--data-dir", type=str, default="./data")
-    parser.add_argument("--save-dir", type=str, default="./checkpoints")
-    parser.add_argument("--wandb", action="store_true", help="Enable Weights & Biases logging")
+    parser.add_argument("--data-dir", type=str, default="./data/mnist")
+    parser.add_argument("--checkpoints-dir", type=str, default="./checkpoints")
+    parser.add_argument(
+        "--wandb", action="store_true", help="Enable Weights & Biases logging"
+    )
     parser.add_argument("--wandb-project", type=str, default="mnist-training")
     parser.add_argument("--wandb-run-name", type=str, default=None)
-    parser.add_argument("--s3-bucket", type=str, default="", help="S3 bucket to sync checkpoints to")
-    parser.add_argument("--s3-prefix", type=str, default="", help="S3 key prefix (e.g. mnist-run-001)")
-    parser.add_argument("--self-terminate", action="store_true", help="Terminate EC2 instance when training finishes")
+    parser.add_argument(
+        "--s3-bucket", type=str, default="", help="S3 bucket to sync checkpoints to"
+    )
+    parser.add_argument(
+        "--s3-prefix", type=str, default="", help="S3 key prefix (e.g. mnist-run-001)"
+    )
+    parser.add_argument(
+        "--self-terminate",
+        action="store_true",
+        help="Terminate EC2 instance when training finishes",
+    )
     args = parser.parse_args()
 
     logger = get_logger(__name__)
@@ -109,6 +122,9 @@ def main():
     logger.info("=" * 60)
     logger.info("MNIST CNN Training")
     logger.info("=" * 60)
+    logger.info(
+        "Arguments:\n%s", "\n".join(f"  {k}: {v}" for k, v in vars(args).items())
+    )
 
     # --- Device setup ---
     device = get_device()
@@ -116,18 +132,26 @@ def main():
 
     # --- Data download and preparation ---
     logger.info("Downloading and preparing MNIST dataset...")
-    transform = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Normalize((0.1307,), (0.3081,)),
-    ])
+    transform = transforms.Compose(
+        [
+            transforms.ToTensor(),
+            transforms.Normalize((0.1307,), (0.3081,)),
+        ]
+    )
 
-    train_dataset = datasets.MNIST(args.data_dir, train=True, download=True, transform=transform)
-    test_dataset = datasets.MNIST(args.data_dir, train=False, download=True, transform=transform)
+    train_dataset = datasets.MNIST(
+        args.data_dir, train=True, download=True, transform=transform
+    )
+    test_dataset = datasets.MNIST(
+        args.data_dir, train=False, download=True, transform=transform
+    )
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False)
 
-    logger.info("Train samples: %d | Test samples: %d", len(train_dataset), len(test_dataset))
+    logger.info(
+        "Train samples: %d | Test samples: %d", len(train_dataset), len(test_dataset)
+    )
 
     # --- Model setup ---
     logger.info("Building convolutional network...")
@@ -150,7 +174,7 @@ def main():
         wandb.watch(model, log="all", log_freq=100)
 
     # --- Training loop ---
-    os.makedirs(args.save_dir, exist_ok=True)
+    os.makedirs(args.checkpoints_dir, exist_ok=True)
     logger.info("Starting training for %d epochs...", args.epochs)
 
     best_test_acc = 0.0
@@ -159,35 +183,43 @@ def main():
         logger.info("Epoch %d/%d", epoch, args.epochs)
 
         start = time.time()
-        train_loss, train_acc = train_one_epoch(model, train_loader, optimizer, criterion, device, epoch, logger)
+        train_loss, train_acc = train_one_epoch(
+            model, train_loader, optimizer, criterion, device, epoch, logger
+        )
         elapsed = time.time() - start
 
         test_loss, test_acc = evaluate(model, test_loader, criterion, device)
 
         logger.info(
             "Train Loss: %.4f | Train Acc: %.2f%% | Test Loss: %.4f | Test Acc: %.2f%% | Time: %.1fs",
-            train_loss, train_acc, test_loss, test_acc, elapsed,
+            train_loss,
+            train_acc,
+            test_loss,
+            test_acc,
+            elapsed,
         )
 
         if args.wandb:
-            wandb.log({
-                "epoch": epoch,
-                "train/loss": train_loss,
-                "train/accuracy": train_acc,
-                "test/loss": test_loss,
-                "test/accuracy": test_acc,
-                "lr": optimizer.param_groups[0]["lr"],
-                "epoch_time": elapsed,
-            })
+            wandb.log(
+                {
+                    "epoch": epoch,
+                    "train/loss": train_loss,
+                    "train/accuracy": train_acc,
+                    "test/loss": test_loss,
+                    "test/accuracy": test_acc,
+                    "lr": optimizer.param_groups[0]["lr"],
+                    "epoch_time": elapsed,
+                }
+            )
 
         if test_acc > best_test_acc:
             best_test_acc = test_acc
-            path = os.path.join(args.save_dir, "best_model.pt")
+            path = os.path.join(args.checkpoints_dir, "best_model.pt")
             torch.save(model.state_dict(), path)
             logger.info("New best model saved to %s (acc=%.2f%%)", path, test_acc)
 
     # --- Final save ---
-    final_path = os.path.join(args.save_dir, "final_model.pt")
+    final_path = os.path.join(args.checkpoints_dir, "final_model.pt")
     torch.save(model.state_dict(), final_path)
     logger.info("Final model saved to %s", final_path)
     logger.info("Training complete. Best test accuracy: %.2f%%", best_test_acc)
@@ -199,12 +231,16 @@ def main():
     if args.s3_bucket:
         prefix = args.s3_prefix or f"mnist-{time.strftime('%Y%m%d-%H%M%S')}"
         logger.info("Syncing checkpoints to s3://%s/%s/...", args.s3_bucket, prefix)
-        sync_to_s3(args.save_dir, args.s3_bucket, prefix)
+        sync_to_s3(args.checkpoints_dir, args.s3_bucket, prefix)
+    else:
+        logger.info("S3 sync skipped (no --s3-bucket provided)")
 
     # --- Self-terminate EC2 instance ---
     if args.self_terminate:
         logger.info("Self-terminating EC2 instance...")
         terminate_self()
+    else:
+        logger.info("Self-terminate skipped (no --self-terminate flag)")
 
 
 if __name__ == "__main__":

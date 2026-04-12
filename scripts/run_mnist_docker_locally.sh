@@ -12,8 +12,10 @@
 # -e: exit on error, -u: error on undefined vars, -o pipefail: catch errors in pipes
 set -euo pipefail
 
+echo "Working directory: $(pwd)"
+
 IMAGE_NAME="mnist-local"
-DOCKERFILE="dockers/Dockerfile_mnist_locally"
+DOCKERFILE="Dockerfile"
 
 # ---- Build image (skips if up to date) ----
 echo "Building Docker image: ${IMAGE_NAME}..."
@@ -43,4 +45,4 @@ docker run --rm \
     -v "$(pwd)/logs":/workspace/logs \
     -v "$(pwd)/checkpoints":/workspace/checkpoints \
     "${IMAGE_NAME}:latest" \
-    python -m src.mnist.train_mnist --epochs 5 --batch-size 128 --lr 0.0005 --wandb --wandb-project my-project
+    python -m src.mnist.train_mnist --epochs 3 --batch-size 64 --lr 0.0005 --wandb --wandb-project my-project

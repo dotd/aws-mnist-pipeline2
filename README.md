@@ -3,26 +3,26 @@
 ## Usage
 
 ```bash
-python run.py <pipeline> [args...]
+python -m <module> [args...]
 ```
 
-### Available pipelines
+### Available modules
 
-| Pipeline | Description |
+| Module | Description |
 |---|---|
-| `mnist` | MNIST digit classification (CNN) |
-| `unet` | U-Net semantic segmentation on Pascal VOC 2012 |
+| `src.mnist.train_mnist` | MNIST digit classification (CNN) |
+| `src.UNET_PascalVOC_simple.train` | U-Net semantic segmentation on Pascal VOC 2012 |
 
 ### Examples
 
 ```bash
 # Train MNIST
-python run.py mnist --epochs 10 --batch-size 64
+python -m src.mnist.train_mnist --epochs 10 --batch-size 64
 
 # Train U-Net segmentation
-python run.py unet --epochs 25 --batch-size 8 --image-size 256
+python -m src.UNET_PascalVOC_simple.train --epochs 25 --batch-size 8 --image-size 256
 
-# Docker: override pipeline at runtime
-docker run my-cv-model python run.py unet --epochs 25
+# Docker: pass module at runtime
+docker run my-cv-model python -m src.mnist.train_mnist --epochs 25
 ```
 

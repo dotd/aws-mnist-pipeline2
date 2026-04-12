@@ -13,11 +13,9 @@
 # After training, use check_training.sh to monitor, sync results, and terminate.
 #
 # Usage:
-#   ./scripts/run_on_aws.sh                          # Train MNIST (default)
-#   ./scripts/run_on_aws.sh unet                     # Train U-Net
-#   ./scripts/run_on_aws.sh mnist --epochs 5         # Pass extra args
-#   ./scripts/run_on_aws.sh unet --epochs 25 --wandb # U-Net with wandb
-#   ./scripts/run_on_aws.sh unet --epochs 25 --wandb --wandb-project my-project # U-Net with wandb custom project
+#   ./scripts/run_on_aws.sh src.mnist.train_mnist --epochs 5
+#   ./scripts/run_on_aws.sh src.UNET_PascalVOC_simple.train --epochs 25 --wandb
+#   ./scripts/run_on_aws.sh src.mnist.train_mnist --epochs 10 --wandb --wandb-project my-project
 
 set -euo pipefail
 
@@ -49,26 +47,19 @@ ECR_URI="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 IMAGE_URI="${ECR_URI}/${ECR_REPO_NAME}:${IMAGE_TAG}"
 
 # Parse pipeline and extra args
-PIPELINE="${1:-mnist}"
-shift 2>/dev/null || true
+MODULE="${1:?Error: module is required (e.g. src.mnist.train_mnist)}"
+shift
 EXTRA_ARGS="$*"
 
 # Build AWS flags for S3 sync and self-termination
 AWS_TRAIN_FLAGS=""
 if [[ -n "$S3_BUCKET" ]]; then
-    S3_PREFIX="${PIPELINE}-$(date +%Y%m%d-%H%M%S)"
+    S3_PREFIX="${MODULE}-$(date +%Y%m%d-%H%M%S)"
     AWS_TRAIN_FLAGS="--s3-bucket ${S3_BUCKET} --s3-prefix ${S3_PREFIX}"
 fi
 AWS_TRAIN_FLAGS="${AWS_TRAIN_FLAGS} --self-terminate"
 
-if [[ "$PIPELINE" == "mnist" ]]; then
-    DOCKER_CMD="python run.py mnist ${EXTRA_ARGS} ${AWS_TRAIN_FLAGS}"
-elif [[ "$PIPELINE" == "unet" ]]; then
-    DOCKER_CMD="python run.py unet ${EXTRA_ARGS} ${AWS_TRAIN_FLAGS}"
-else
-    echo "Error: unknown pipeline '${PIPELINE}'. Use 'mnist' or 'unet'."
-    exit 1
-fi
+DOCKER_CMD="python -m ${MODULE} ${EXTRA_ARGS} ${AWS_TRAIN_FLAGS}"
 
 # Check wandb key if --wandb is requested
 WANDB_ENV_FLAG=""
@@ -81,11 +72,11 @@ if echo "${EXTRA_ARGS}" | grep -q -- "--wandb"; then
     WANDB_ENV_FLAG="-e WANDB_API_KEY=${WANDB_API_KEY}"
 fi
 
-RUN_NAME="${PIPELINE}-$(date +%Y%m%d-%H%M%S)"
+RUN_NAME="${MODULE}-$(date +%Y%m%d-%H%M%S)"
 
 echo "============================================================"
 echo "  AWS Training Pipeline"
-echo "  Pipeline:  ${PIPELINE}"
+echo "  Module:    ${MODULE}"
 echo "  Instance:  ${INSTANCE_TYPE}"
 echo "  Run name:  ${RUN_NAME}"
 echo "============================================================"
@@ -355,7 +346,7 @@ echo "--- Starting training (detached): ${DOCKER_CMD} ---"
 mkdir -p /home/ubuntu/data /home/ubuntu/checkpoints
 
 nohup docker run --rm --gpus all \
-  --name training-${PIPELINE} \
+  --name training-${MODULE} \
   ${WANDB_ENV_FLAG} \
   -v ${REMOTE_CODE_DIR}:/workspace \
   -v /home/ubuntu/data:/workspace/data \
@@ -376,7 +367,7 @@ INSTANCE_ID=${INSTANCE_ID}
 PUBLIC_IP=${PUBLIC_IP}
 KEY_FILE=${KEY_FILE}
 RUN_NAME=${RUN_NAME}
-PIPELINE=${PIPELINE}
+PIPELINE=${MODULE}
 AWS_REGION=${AWS_REGION}
 S3_BUCKET=${S3_BUCKET}
 EOF

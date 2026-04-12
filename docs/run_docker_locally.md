@@ -47,14 +47,14 @@ docker run --rm \
   -v $(pwd):/workspace \
   -v $(pwd)/data:/workspace/data \
   -v $(pwd)/checkpoints:/workspace/checkpoints \
-  my-cv-model:latest python run.py mnist --epochs 5 --batch-size 128 --lr 0.0005
+  my-cv-model:latest python -m src.mnist.train_mnist --epochs 5 --batch-size 128 --lr 0.0005
 
 # Train U-Net segmentation
 docker run --rm \
   -v $(pwd):/workspace \
   -v $(pwd)/data:/workspace/data \
   -v $(pwd)/checkpoints:/workspace/checkpoints \
-  my-cv-model:latest python run.py unet --epochs 25 --batch-size 8 --image-size 256
+  my-cv-model:latest python -m src.UNET_PascalVOC_simple.train --epochs 25 --batch-size 8 --image-size 256
 ```
 
 ### Running with GPU (if available)

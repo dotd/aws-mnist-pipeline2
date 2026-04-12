@@ -85,7 +85,7 @@ docker run --gpus all \
 docker run --gpus all \
   -v /data:/workspace/data \
   -v /checkpoints:/workspace/checkpoints \
-  <ecr_url>/my-cv-model:latest python run.py unet --epochs 25 --batch-size 8
+  <ecr_url>/my-cv-model:latest python -m src.UNET_PascalVOC_simple.train --epochs 25 --batch-size 8
 ```
 
 ##### 5. Save outputs to S3

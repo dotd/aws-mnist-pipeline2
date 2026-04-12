@@ -229,6 +229,7 @@ def main():
     logger.info("Training complete. Best test accuracy: %.2f%%", best_test_acc)
 
     if args.wandb:
+        logger.info("W&B run summary: %s", wandb.run.get_url())
         wandb.finish()
 
     # --- Sync checkpoints to S3 ---

@@ -331,13 +331,7 @@ echo "[Step 7/8] Syncing code to EC2..."
 REMOTE_CODE_DIR="/home/ubuntu/code"
 SSH_OPTS="-o StrictHostKeyChecking=no -i ${KEY_FILE}"
 
-rsync -avz --exclude '.git' \
-    --exclude 'data' \
-    --exclude 'checkpoints' \
-    --exclude 'venv' \
-    --exclude '__pycache__' \
-    --exclude 'wandb' \
-    --exclude '.DS_Store' \
+rsync -avz --filter=':- .gitignore' --exclude '.git' \
     -e "ssh ${SSH_OPTS}" \
     ./ ubuntu@"${PUBLIC_IP}":"${REMOTE_CODE_DIR}/"
 

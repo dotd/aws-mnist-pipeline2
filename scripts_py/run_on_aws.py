@@ -343,8 +343,7 @@ def step_7_sync_code(cfg, logger, public_ip):
     ssh_opts = f"-o StrictHostKeyChecking=no -i {key_file}"
 
     run_cmd(
-        f'rsync -avz --exclude ".git" --exclude "data" --exclude "checkpoints" '
-        f'--exclude "venv" --exclude "__pycache__" --exclude "wandb" --exclude ".DS_Store" '
+        f'rsync -avz --filter=":- .gitignore" --exclude ".git" '
         f'-e "ssh {ssh_opts}" ./ ubuntu@{public_ip}:{remote_code_dir}/',
         logger,
     )

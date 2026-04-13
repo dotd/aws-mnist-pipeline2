@@ -99,8 +99,12 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--data-dir", type=str, default="./data/mnist")
     parser.add_argument("--checkpoints-dir", type=str, default="./checkpoints")
+    parser.add_argument("--logs-dir", type=str, default="./logs")
     parser.add_argument(
-        "--wandb", action="store_true", default=True, help="Enable Weights & Biases logging"
+        "--wandb",
+        action="store_true",
+        default=True,
+        help="Enable Weights & Biases logging",
     )
     parser.add_argument("--wandb-project", type=str, default="mnist-training")
     parser.add_argument("--wandb-run-name", type=str, default=None)
@@ -120,7 +124,7 @@ def parse_args():
 
 def main():
     args = parse_args()
-    logger = get_logger(__name__)
+    logger = get_logger(__name__, log_dir=args.logs_dir)
 
     logger.info("=" * 60)
     logger.info("MNIST CNN Training")
@@ -236,7 +240,10 @@ def main():
     if args.s3_bucket:
         prefix = args.s3_prefix or f"mnist-{time.strftime('%Y%m%d-%H%M%S')}"
         logger.info("Syncing checkpoints to s3://%s/%s/...", args.s3_bucket, prefix)
-        sync_to_s3(args.checkpoints_dir, args.s3_bucket, prefix)
+        sync_to_s3(args.checkpoints_dir, args.s3_bucket, f"{prefix}/checkpoints")
+        sync_to_s3(args.logs_dir, args.s3_bucket, f"{prefix}/logs")
+        sync_to_s3("./", args.s3_bucket, f"{prefix}/code")
+
     else:
         logger.info("S3 sync skipped (no --s3-bucket provided)")
 

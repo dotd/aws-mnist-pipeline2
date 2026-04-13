@@ -371,7 +371,7 @@ docker pull {image_uri}
 echo '--- Starting training (detached): {docker_cmd} ---'
 mkdir -p /home/ubuntu/data /home/ubuntu/checkpoints
 
-nohup docker run --rm --gpus all \
+nohup docker run --rm --gpus all --network host \
   --name training-{module} \
   {wandb_env_flag} \
   -v {remote_code_dir}:/workspace \

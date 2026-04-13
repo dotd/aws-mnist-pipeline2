@@ -21,6 +21,9 @@
 
 set -euo pipefail
 
+# Disable AWS CLI pager (prevents blocking on `less`)
+export AWS_PAGER=""
+
 # =============================================================================
 # Configuration — loaded from YAML config file
 # =============================================================================
@@ -356,7 +359,7 @@ docker pull ${IMAGE_URI}
 echo "--- Starting training (detached): ${DOCKER_CMD} ---"
 mkdir -p /home/ubuntu/data /home/ubuntu/checkpoints
 
-nohup docker run --rm --gpus all \
+nohup docker run --rm --gpus all --network host \
   --name training-${MODULE} \
   ${WANDB_ENV_FLAG} \
   -v ${REMOTE_CODE_DIR}:/workspace \

@@ -15,29 +15,46 @@
 # Usage:
 #   ./scripts/run_on_aws.sh src.mnist.train_mnist --epochs 5
 #   ./scripts/run_on_aws.sh src.UNET_PascalVOC_simple.train --epochs 25 --wandb
-#   ./scripts/run_on_aws.sh src.mnist.train_mnist --epochs 10 --wandb --wandb-project my-project
+#   CONFIG_FILE=configs/custom.yaml ./scripts/run_on_aws.sh src.mnist.train_mnist --epochs 10
+#
+# Config: reads from configs/aws.yaml by default. Override with CONFIG_FILE env var.
 
 set -euo pipefail
 
 # =============================================================================
-# Configuration — edit these to match your setup
+# Configuration — loaded from YAML config file
 # =============================================================================
-AWS_ACCOUNT_ID="148761683501"
-AWS_REGION="us-east-1"
-ECR_REPO_NAME="dotan-fr-my-cv-model"
-IMAGE_TAG="latest"
-INSTANCE_TYPE="g4dn.xlarge"
-KEY_NAME="training-key"
-KEY_FILE="$HOME/.ssh/${KEY_NAME}.pem"
-SECURITY_GROUP_NAME="training-sg"
-IAM_ROLE_NAME="ec2-training-role"
-IAM_INSTANCE_PROFILE_NAME="ec2-training-profile"
-S3_BUCKET="fsr-autonomous-training"  # Set to your bucket name, e.g. "my-training-results". Leave empty to skip S3 sync.
-: "${WANDB_API_KEY:=}"  # Reads from env var WANDB_API_KEY. Or paste your key between the quotes.
-VOLUME_SIZE_GB=100
+CONFIG_FILE="${CONFIG_FILE:-configs/aws.yaml}"
 
-# Deep Learning AMI (Ubuntu) — update if needed for your region
-# This finds the latest Deep Learning AMI automatically
+# Helper: extract a value from the YAML config using Python
+yaml_get() {
+    python3 -c "
+import yaml, sys
+with open('${CONFIG_FILE}') as f:
+    cfg = yaml.safe_load(f)
+keys = '$1'.split('.')
+val = cfg
+for k in keys:
+    val = val[k]
+print(val)
+"
+}
+
+AWS_ACCOUNT_ID=$(yaml_get "aws.account_id")
+AWS_REGION=$(yaml_get "aws.region")
+ECR_REPO_NAME=$(yaml_get "ecr.repo_name")
+IMAGE_TAG=$(yaml_get "ecr.image_tag")
+INSTANCE_TYPE=$(yaml_get "ec2.instance_type")
+KEY_NAME=$(yaml_get "ec2.key_name")
+KEY_FILE=$(eval echo "$(yaml_get 'ec2.key_file')")  # eval to expand ~
+SECURITY_GROUP_NAME=$(yaml_get "ec2.security_group_name")
+VOLUME_SIZE_GB=$(yaml_get "ec2.volume_size_gb")
+IAM_ROLE_NAME=$(yaml_get "iam.role_name")
+IAM_INSTANCE_PROFILE_NAME=$(yaml_get "iam.instance_profile_name")
+S3_BUCKET=$(yaml_get "s3.bucket")
+WANDB_API_KEY=$(yaml_get "wandb.api_key")
+
+# Deep Learning AMI (Ubuntu) — found automatically
 AMI_ID=""
 
 # =============================================================================

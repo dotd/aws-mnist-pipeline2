@@ -19,3 +19,6 @@ iam:
 
 s3:
   bucket: "fsr-autonomous-training"
+
+wandb:
+  api_key: "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"

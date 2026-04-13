@@ -45,6 +45,7 @@ def _load_yaml(config_path):
     flat["iam_role_name"] = cfg["iam"]["role_name"]
     flat["iam_instance_profile_name"] = cfg["iam"]["instance_profile_name"]
     flat["s3_bucket"] = cfg["s3"]["bucket"]
+    flat["wandb_api_key"] = cfg.get("wandb", {}).get("api_key", "")
     return flat
 
 

@@ -12,8 +12,10 @@ EC2_IMDS_URL = "http://169.254.169.254"
 
 
 def sync_to_s3(local_dir, bucket, prefix):
-    """Upload all files in local_dir to s3://bucket/prefix/."""
+    """Upload all files in local_dir (recursively) to s3://bucket/prefix/.
+    Preserves directory structure relative to local_dir."""
     s3 = boto3.client("s3")
+    uploaded = 0
     for root, _, files in os.walk(local_dir):
         for filename in files:
             local_path = os.path.join(root, filename)
@@ -21,6 +23,10 @@ def sync_to_s3(local_dir, bucket, prefix):
             s3_key = f"{prefix}/{rel_path}"
             s3.upload_file(local_path, bucket, s3_key)
             logger.info("Uploaded %s -> s3://%s/%s", local_path, bucket, s3_key)
+            uploaded += 1
+    logger.info(
+        "Synced %d files from %s to s3://%s/%s/", uploaded, local_dir, bucket, prefix
+    )
 
 
 def terminate_self():
